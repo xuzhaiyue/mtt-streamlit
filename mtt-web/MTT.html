@@ -1,0 +1,202 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f8b77" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>MTT 实验助手 (移动版)</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
+    <span class="grid-overlay"></span>
+  </div>
+
+  <header class="hero">
+    <div class="badge">MTT Lab</div>
+    <h1>MTT 实验助手</h1>
+    <p>细胞计数 + 铺板 + 单药/双药配液，一站式移动计算。</p>
+  </header>
+
+  <nav class="tab-nav" aria-label="功能切换">
+    <button class="tab-btn active" data-tab="count">细胞计数</button>
+    <button class="tab-btn" data-tab="single">单药梯度</button>
+    <button class="tab-btn" data-tab="double">双药混配</button>
+  </nav>
+
+  <main class="content">
+    <section id="tab-count" class="tab-panel active" aria-labelledby="细胞计数">
+      <div class="card">
+        <div class="card-header">
+          <h2>细胞计数与铺板</h2>
+          <p class="muted">稀释倍数可输入 5 或 10，自动回算原液细胞密度。</p>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>计数板总细胞数</span>
+            <input id="count-total" type="number" min="0" step="1" placeholder="例如 320" />
+          </label>
+          <label>
+            <span>计数大格数</span>
+            <input id="count-squares" type="number" min="1" step="1" value="4" />
+          </label>
+          <label>
+            <span>计数稀释倍数</span>
+            <input id="count-dilution" type="number" min="1" step="1" value="1" list="dilution-list" />
+          </label>
+          <datalist id="dilution-list">
+            <option value="1"></option>
+            <option value="2"></option>
+            <option value="5"></option>
+            <option value="10"></option>
+            <option value="20"></option>
+          </datalist>
+          <label>
+            <span>目标每孔细胞数 (个)</span>
+            <input id="seed-target" type="number" min="1" step="1" value="5000" />
+          </label>
+          <label>
+            <span>每孔体积 (mL)</span>
+            <input id="seed-well-volume" type="number" min="0.01" step="0.01" value="0.1" />
+          </label>
+          <label>
+            <span>使用孔数/板</span>
+            <input id="seed-wells-per-plate" type="number" min="1" step="1" value="96" />
+          </label>
+          <label>
+            <span>计划铺板数量 (块)</span>
+            <input id="seed-plates" type="number" min="1" step="1" value="1" />
+          </label>
+          <label>
+            <span>配液余量 (mL)</span>
+            <input id="seed-extra" type="number" min="0" step="0.1" value="0.5" />
+          </label>
+        </div>
+
+        <button id="count-calc" class="primary-btn">计算铺板方案</button>
+        <div id="count-result" class="result">等待输入...</div>
+      </div>
+    </section>
+
+    <section id="tab-single" class="tab-panel" aria-labelledby="单药梯度">
+      <div class="card">
+        <div class="card-header">
+          <h2>单药梯度配制</h2>
+          <p class="muted">默认使用连续稀释并自动倒推补偿体积，自动排序。若是添加法 (2X)，选择“方式B”。母液取样过小时自动扩容 (默认 2 μL)。</p>
+        </div>
+
+        <div class="mode-switch">
+          <label><input type="radio" name="single-mode" value="replace" checked />方式A 连续稀释</label>
+          <label><input type="radio" name="single-mode" value="add" />方式B 添加法 (2X)</label>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>药物母液浓度 (mM)</span>
+            <input id="single-stock" type="number" min="0" step="0.01" placeholder="例如 10" />
+          </label>
+          <label>
+            <span>计划每管配制体积 (μL)</span>
+            <input id="single-total-vol" type="number" min="10" step="10" value="1000" />
+          </label>
+          <label>
+            <span>母液最小取样 (μL)</span>
+            <input id="single-min-stock" type="number" min="0.5" step="0.5" value="2" />
+          </label>
+          <label class="wide">
+            <span>目标终浓度 (μM，逗号分隔，自动从高到低排序)</span>
+            <input id="single-targets" type="text" value="0, 5, 10, 20, 50, 100" />
+          </label>
+        </div>
+
+        <button id="single-calc" class="primary-btn">计算单药配方</button>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>终浓度 (μM)</th>
+                <th>配液浓度 (μM)</th>
+                <th>来源</th>
+                <th>取样体积 (μL)</th>
+                <th>加培养基 (μL)</th>
+              </tr>
+            </thead>
+            <tbody id="single-table-body"></tbody>
+          </table>
+        </div>
+        <div id="single-warning" class="note"></div>
+      </div>
+    </section>
+
+    <section id="tab-double" class="tab-panel" aria-labelledby="双药混配">
+      <div class="card">
+        <div class="card-header">
+          <h2>双药混合配制 (A × B 矩阵)</h2>
+          <p class="muted">输入 A/B 终浓度序列 (μM)，自动生成矩阵组合并计算配比。</p>
+        </div>
+
+        <div class="mode-switch">
+          <label><input type="radio" name="double-mode" value="replace" checked />方式A 直接配制 (1X)</label>
+          <label><input type="radio" name="double-mode" value="add" />方式B 添加法 (2X)</label>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>药A 母液浓度 (mM)</span>
+            <input id="double-stock-a" type="number" min="0" step="0.01" placeholder="例如 10" />
+          </label>
+          <label>
+            <span>药B 母液浓度 (mM)</span>
+            <input id="double-stock-b" type="number" min="0" step="0.01" placeholder="例如 10" />
+          </label>
+          <label>
+            <span>每管配制体积 (μL)</span>
+            <input id="double-total-vol" type="number" min="10" step="10" value="1000" />
+          </label>
+          <label class="wide">
+            <span>药A终浓度序列 (μM，逗号分隔)</span>
+            <input id="double-targets-a" type="text" value="0, 5, 10, 20" />
+          </label>
+          <label class="wide">
+            <span>药B终浓度序列 (μM，逗号分隔)</span>
+            <input id="double-targets-b" type="text" value="0, 5, 10, 20" />
+          </label>
+        </div>
+
+        <button id="double-calc" class="primary-btn">计算混合配方</button>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>药A终浓度</th>
+                <th>药B终浓度</th>
+                <th>加药A (μL)</th>
+                <th>加药B (μL)</th>
+                <th>加培养基 (μL)</th>
+              </tr>
+            </thead>
+            <tbody id="double-table-body"></tbody>
+          </table>
+        </div>
+        <div id="double-warning" class="note"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>提示：方式B 会自动将目标终浓度 ×2 作为配液浓度。</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

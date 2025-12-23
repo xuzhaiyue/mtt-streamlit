@@ -1,0 +1,16 @@
+﻿{
+  "name": "MTT 实验助手",
+  "short_name": "MTT助手",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f4efe4",
+  "theme_color": "#0f8b77",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
