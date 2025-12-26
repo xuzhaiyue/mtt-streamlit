@@ -1,15 +1,17 @@
-﻿import streamlit as st
+import streamlit as st
 
 
-def calc_seeding(n, sq, df, target_per_well, vol_per_well, plates, safety):
+def calc_seeding(n, sq, df, target_per_well, vol_per_well, plates, safety, wells_per_plate):
     if sq <= 0:
         return None, "计数的格数必须大于 0"
+    if wells_per_plate <= 0:
+        return None, "每块使用孔数必须大于 0"
 
     conc_cells_ml = (n / sq) * 10000 * df
     if conc_cells_ml == 0:
         return None, "错误：细胞计数为 0"
 
-    total_wells = 96 * plates
+    total_wells = wells_per_plate * plates
     total_prep_vol = (total_wells * vol_per_well) + safety
     target_conc = target_per_well / vol_per_well
     vol_cell_stock = (target_conc * total_prep_vol) / conc_cells_ml
@@ -234,9 +236,17 @@ with tab1:
         well_vol_ml = st.number_input(
             "每孔体积 (mL)",
             min_value=0.0,
-            value=0.1,
+            value=0.09,
             step=0.01,
             format="%.2f",
+        )
+        wells_per_plate = st.number_input(
+            "每块实际使用孔数",
+            min_value=1.0,
+            max_value=96.0,
+            value=72.0,
+            step=1.0,
+            format="%.0f",
         )
         plate_num = st.number_input(
             "计划铺板数量 (块)",
@@ -263,6 +273,7 @@ with tab1:
             well_vol_ml,
             plate_num,
             seed_safety,
+            wells_per_plate,
         )
         if error:
             st.error(error)
