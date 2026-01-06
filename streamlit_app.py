@@ -72,7 +72,7 @@ def calc_single(
     results = []
 
     calc_data = []
-    # 选择每个浓度的“上一级来源”：优先选择稀释倍数最大的、但不超过 max_dilution 的浓度
+    # 智能选择来源：优先选稀释倍数最大但<max的
     for i, current_c in enumerate(targets):
         is_highest = i == 0
         if is_highest:
@@ -225,7 +225,6 @@ def calc_combo_mix(
     stock_um_a = stock_a_mm * 1000
     stock_um_b = stock_b_mm * 1000
 
-    # 转为 μM 计算，输出再带单位
     prep_targets_a = [t * prep_factor * unit_factor for t in targets_a]
     prep_targets_b = [t * prep_factor * unit_factor for t in targets_b]
 
@@ -333,18 +332,21 @@ def calc_combo_mix(
     return rows, None, target_prep_vol / 1000
 
 
+# ================== 界面部分 ==================
+
 st.set_page_config(
     page_title="MTT 实验全能助手",
     page_icon="🧪",
     layout="centered",
 )
 
+# 标题移到 Tab 之前
+st.title("MTT 实验全能助手 (计数 + 配液)")
+st.caption("基于 Streamlit 的手机友好版本，输入参数后点击按钮即可获得配液方案。")
+
 (tab1, tab2, tab3, tab4) = st.tabs(
     ["1. 细胞计数与铺板", "2. 单药梯度配制", "3. 双药混合配制(A+B)", "4. 三药协同 (Combo+C)"]
 )
-
-st.title("MTT 实验全能助手 (计数 + 配液)")
-st.caption("基于 Streamlit 的手机友好版本，输入参数后点击按钮即可获得配液方案。")
 
 with tab1:
     st.subheader("细胞计数与铺板")
@@ -369,7 +371,6 @@ with tab1:
             options=[1, 2, 5, 10, 20],
             index=0,
         )
-        st.caption("如: 太浓了稀释 10 倍后计数则填 10")
 
         st.markdown("**铺板需求**")
         target_cell_per_well = st.number_input(
@@ -428,213 +429,119 @@ with tab1:
 with tab2:
     st.subheader("单药梯度配制")
     with st.form("single_form"):
-        st.markdown("**母液与限制**")
-        s1_stock = st.number_input(
-            "药物母液浓度 (mM)",
-            min_value=0.0,
-            value=10.0,
-            step=0.1,
-            format="%.2f",
-        )
-        min_pipette = st.number_input(
-            "母液最小取样量 (μL)",
-            min_value=0.0,
-            value=2.0,
-            step=0.5,
-            format="%.2f",
-        )
+        st.markdown("**1. 基础信息**")
+        s1_stock = st.number_input("药物母液浓度 (mM)", value=10.0, step=0.1, format="%.2f")
+        s1_min_pipette = st.number_input("母液最小取样量 (μL)", value=2.0, step=0.5)
 
-        st.markdown("**孔板与体积设置**")
-        s1_add_vol = st.number_input(
-            "每孔加药体积 (μL) - 推荐 90 μL",
-            min_value=0.0,
-            value=90.0,
-            step=5.0,
-        )
-        st.caption("默认按 90 μL 细胞悬液 + 90 μL 2× 工作液 (总 180 μL) 计算；如体系不同，可调整数值。")
-
-        s1_replicates = st.number_input(
-            "每个浓度每块板的复孔数",
-            min_value=1.0,
-            value=3.0,
-            step=1.0,
-            format="%.0f",
-        )
-        s1_control_reps = st.number_input(
-            "阴性对照(0 μM)每块板复孔数",
-            min_value=0.0,
-            value=3.0,
-            step=1.0,
-            format="%.0f",
-        )
-        s1_plate_num = st.number_input(
-            "需要的板子数量",
-            min_value=1.0,
-            value=1.0,
-            step=1.0,
-            format="%.0f",
-        )
-        s1_extra_ratio = st.number_input(
-            "额外预留比例 (%)",
-            min_value=0.0,
-            value=10.0,
-            step=5.0,
-            format="%.0f",
-        )
-
-        st.markdown("**浓度梯度设置 - 自动按高到低稀释**")
-        s1_unit = st.selectbox(
-            "浓度单位",
-            options=["nM", "μM", "mM"],
-            index=1,
-            help="选择目标终浓度的单位，程序会自动换算到 μM 计算",
-        )
-        s1_targets = st.text_input(
-            "输入目标浓度 (逗号分隔)",
-            value="0, 1, 5, 10, 50, 100",
-        )
-
-        base_needed = s1_add_vol * s1_replicates * s1_plate_num
-        suggest_min = base_needed * (1 + s1_extra_ratio / 100)
+        st.markdown("**2. 浓度梯度 (高→低)**")
+        # 默认单位设为 nM (index=0)
+        s1_unit = st.selectbox("单位", options=["nM", "μM", "mM"], index=0)
+        s1_targets = st.text_input("输入目标浓度 (逗号分隔)", value="100, 50, 10, 5, 1, 0")
+        
+        st.markdown("**3. 配液保留量**")
         s1_plan_vol = st.number_input(
-            "每管希望最终至少保留体积 (μL)",
-            min_value=0.0,
-            value=float(int(suggest_min) if suggest_min > 0 else 0),
-            step=50.0,
-            help="填写完成稀释后希望每管至少剩余的体积（不含被后续取走的体积）。建议略高于理论最小值。",
+            "每管做完后至少保留 (μL)", 
+            value=6000.0, 
+            step=500.0,
+            help="稀释完成后，每管里剩下的液体体积 (程序会自动倒推计算第一管需要配多少才够)。"
         )
-        s1_max_dilution = st.number_input(
-            "单步最大稀释倍数 (默认 10×，越大跳跃越多)",
-            min_value=1.0,
-            value=10.0,
-            step=1.0,
-            help="选择上一管时优先选稀释倍数最大的（不超过此值），以减少传递步骤，例如 100→10，50→5。",
-        )
+        
+        # 将复孔、板数等参数折叠隐藏
+        with st.expander("⚙️ 更多参数设置 (点击展开)"):
+            s1_add_vol = st.number_input("每孔加药体积 (μL)", value=90.0)
+            # 默认复孔为 2，且不常显示
+            s1_replicates = st.number_input("每浓度复孔数", value=2.0, step=1.0)
+            s1_control_reps = st.number_input("阴性对照复孔数", value=2.0, step=1.0)
+            s1_plate_num = st.number_input("板子数量", value=1.0)
+            s1_extra_ratio = st.number_input("理论用量额外预留 (%)", value=10.0)
+            s1_max_dilution = st.number_input("单步最大稀释倍数", value=10.0)
 
         single_submit = st.form_submit_button("计算连续稀释方案")
 
     if single_submit:
+        # 处理阴性对照
         targets_text = s1_targets
         if "0" not in [x.strip() for x in s1_targets.replace("，", ",").split(",")]:
             if s1_control_reps > 0:
                 targets_text = f"{s1_targets},0"
 
-        extra_factor = 1 + s1_extra_ratio / 100
-        theoretical_need = s1_add_vol * s1_replicates * s1_plate_num
-        recommended_need = theoretical_need * extra_factor
-
+        # 计算理论最低需求
+        base_needed = s1_add_vol * s1_replicates * s1_plate_num
+        recommended_need = base_needed * (1 + s1_extra_ratio / 100)
+        
         unit_factor_map = {"nM": 0.001, "μM": 1.0, "mM": 1000.0}
         unit_factor = unit_factor_map.get(s1_unit, 1.0)
 
-        try:
-            raw_targets = targets_text.replace("，", ",").split(",")
-            parsed_targets = [float(x) for x in raw_targets if x.strip()]
-        except ValueError:
-            parsed_targets = []
-
-        non_zero_targets = [t for t in parsed_targets if t != 0]
-        has_zero = any(t == 0 for t in parsed_targets)
-        total_wells = len(non_zero_targets) * s1_replicates * s1_plate_num
-        control_wells = (s1_control_reps * s1_plate_num) if has_zero else 0
-        total_wells += control_wells
-
+        # 确保输入体积足够
         effective_target_vol = max(recommended_need, s1_plan_vol)
         shortage_warning = s1_plan_vol < recommended_need
 
         rows, error = calc_single(
             s1_stock,
-            min_pipette,
+            s1_min_pipette,
             effective_target_vol,
             targets_text,
-            work_conc_factor=2.0,
+            work_conc_factor=2.0, # 默认2X工作液
             unit_factor=unit_factor,
             unit_label=s1_unit,
             max_dilution=s1_max_dilution,
         )
+        
         if error:
             st.error(error)
         elif rows:
-            st.caption(
-                f"理论最低 {theoretical_need:.1f} μL；含预留 {s1_extra_ratio:.0f}% 建议至少 {recommended_need:.1f} μL；"
-                f"本次按 {effective_target_vol:.1f} μL 作为每管保留体积计算（表格“预计剩余”列为倒推后的实际值）。"
-                f"总共覆盖 {total_wells:.0f} 个孔"
-                + (
-                    f"，其中 0 {s1_unit} 阴性对照 {control_wells:.0f} 孔"
-                    if control_wells
-                    else ""
-                )
-            )
+            st.caption(f"理论铺板需 {base_needed:.0f} μL/管。本次按保留 {effective_target_vol:.0f} μL 计算。")
             if shortage_warning:
-                st.warning(
-                    "您输入的目标体积小于建议值，已自动使用建议值计算，建议适当加大以满足传递体积。"
-                )
+                st.warning(f"注意：您设定的保留体积小于理论需求 ({recommended_need:.0f} μL)，已自动增加配液量。")
             st.dataframe(rows, use_container_width=True)
         else:
             st.info("暂无有效结果")
 
 with tab3:
     st.subheader("双药联合矩阵 (Checkerboard) - 4× 配液管")
-    st.caption(
-        "按照 50 μL 细胞 + 25 μL 药A + 25 μL 药B 的常见 100 μL 体系设计，"
-        "配液管浓度默认为终浓度的 4×。"
-    )
+    st.caption("50 μL 细胞 + 25 μL 药A + 25 μL 药B。")
 
     with st.form("matrix_form"):
-        st.markdown("**体系与体积**")
-        m_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=50.0, step=5.0)
-        m_add_a = st.number_input("每孔加药A体积 (μL)", min_value=0.0, value=25.0, step=1.0)
-        m_add_b = st.number_input("每孔加药B体积 (μL)", min_value=0.0, value=25.0, step=1.0)
-
-        st.markdown("**矩阵与用量**")
-        m_rows = st.number_input("矩阵行数 (A 梯度数)", min_value=2, value=6, step=1)
-        m_cols = st.number_input("矩阵列数 (B 梯度数)", min_value=2, value=6, step=1)
-        m_reps = st.number_input("每组合复孔数", min_value=1, value=2, step=1, format="%.0f")
-        m_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
-        m_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
-        m_keep_reserve = st.number_input(
-            "希望每管至少剩余 (mL)",
-            min_value=0.0,
-            value=8.0,
-            step=0.5,
-            help="完成稀释后希望每管保留的体积，实际表格会显示倒推后的“预计剩余”。",
-        )
-
-        st.markdown("**浓度梯度**")
-        c1, c2, c3, c4 = st.columns(4)
+        st.markdown("**1. 矩阵设置**")
+        c1, c2 = st.columns(2)
         with c1:
-            m_stock_a = st.number_input("药A 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
+            m_rows = st.number_input("A 梯度数 (行)", value=6)
+            m_stock_a = st.number_input("药A 母液 (mM)", value=10.0)
+            m_high_a = st.number_input("药A 最高浓度", value=1000.0)
+            # 默认单位 nM
+            m_unit_a = st.selectbox("药A 单位", ["nM", "μM", "mM"], index=0)
+            m_fold_a = st.number_input("药A 稀释倍数", value=4.0)
         with c2:
-            m_high_a = st.number_input("药A 最高浓度", min_value=0.0, value=1000.0, step=10.0)
-        with c3:
-            m_fold_a = st.number_input("药A 梯度倍数", min_value=1.0, value=4.0, step=0.5)
-        with c4:
-            m_unit_a = st.selectbox("药A 单位", options=["nM", "μM", "mM"], index=1)
+            m_cols = st.number_input("B 梯度数 (列)", value=6)
+            m_stock_b = st.number_input("药B 母液 (mM)", value=10.0)
+            m_high_b = st.number_input("药B 最高浓度", value=1000.0)
+            # 默认单位 nM
+            m_unit_b = st.selectbox("药B 单位", ["nM", "μM", "mM"], index=0)
+            m_fold_b = st.number_input("药B 稀释倍数", value=4.0)
 
-        d1, d2, d3, d4 = st.columns(4)
-        with d1:
-            m_stock_b = st.number_input("药B 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
-        with d2:
-            m_high_b = st.number_input("药B 最高浓度", min_value=0.0, value=1000.0, step=10.0)
-        with d3:
-            m_fold_b = st.number_input("药B 梯度倍数", min_value=1.0, value=4.0, step=0.5)
-        with d4:
-            m_unit_b = st.selectbox("药B 单位", options=["nM", "μM", "mM"], index=1)
+        st.markdown("**2. 保留体积**")
+        m_keep_reserve = st.number_input("每管保留体积 (mL)", value=8.0, step=0.5)
 
-        m_min_pipette = st.number_input("母液最小取样量 (μL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
-        m_max_dilution = st.number_input(
-            "单步最大稀释倍数", min_value=1.0, value=10.0, step=1.0, help="控制跳跃稀释的上限，避免过多中间步骤。"
-        )
+        with st.expander("⚙️ 更多参数 (复孔/板数/死体积)"):
+            m_reps = st.number_input("复孔数", value=2.0)
+            m_plates = st.number_input("板子数量", value=7.0)
+            m_dead_vol = st.number_input("死体积 (mL)", value=2.0)
+            m_cell_vol = st.number_input("细胞体积 (μL)", value=50.0)
+            m_add_a = st.number_input("药A体积 (μL)", value=25.0)
+            m_add_b = st.number_input("药B体积 (μL)", value=25.0)
+            m_min_pipette = st.number_input("最小取样 (μL)", value=2.0)
+            m_max_dilution = st.number_input("最大稀释步长", value=10.0)
 
-        matrix_submit = st.form_submit_button("生成 Checkerboard 配液方案")
+        matrix_submit = st.form_submit_button("生成配液方案")
 
     if matrix_submit:
         total_vol = m_cell_vol + m_add_a + m_add_b
         prep_factor = total_vol / m_add_a if m_add_a > 0 else 0
         prep_factor_b = total_vol / m_add_b if m_add_b > 0 else 0
+        
         unit_factor_map = {"nM": 0.001, "μM": 1.0, "mM": 1000.0}
-        unit_factor_a = unit_factor_map.get(m_unit_a, 1.0)
-        unit_factor_b = unit_factor_map.get(m_unit_b, 1.0)
-
+        
+        # 修正之前的括号错误
         targets_a = [m_high_a / (m_fold_a ** i) for i in range(max(int(m_rows) - 1, 1))]
         targets_a.append(0)
         targets_b = [m_high_b / (m_fold_b ** i) for i in range(max(int(m_cols) - 1, 1))]
@@ -644,125 +551,74 @@ with tab3:
         wells_for_b = m_rows * m_reps
 
         rows_a, err_a, need_a = calc_practical_matrix_drug(
-            m_stock_a,
-            m_min_pipette,
-            targets_a,
-            prep_factor,
-            wells_for_a,
-            m_add_a,
-            m_plates,
-            m_dead_vol,
-            m_keep_reserve,
-            m_unit_a,
-            unit_factor_a,
-            m_max_dilution,
+            m_stock_a, m_min_pipette, targets_a, prep_factor, wells_for_a, m_add_a,
+            m_plates, m_dead_vol, m_keep_reserve, m_unit_a, unit_factor_map[m_unit_a], m_max_dilution
         )
         rows_b, err_b, need_b = calc_practical_matrix_drug(
-            m_stock_b,
-            m_min_pipette,
-            targets_b,
-            prep_factor_b,
-            wells_for_b,
-            m_add_b,
-            m_plates,
-            m_dead_vol,
-            m_keep_reserve,
-            m_unit_b,
-            unit_factor_b,
-            m_max_dilution,
+            m_stock_b, m_min_pipette, targets_b, prep_factor_b, wells_for_b, m_add_b,
+            m_plates, m_dead_vol, m_keep_reserve, m_unit_b, unit_factor_map[m_unit_b], m_max_dilution
         )
 
-        st.markdown(
-            f"终体积约 {total_vol:.1f} μL/孔；药A管浓度 {prep_factor:.2f}×，药B管浓度 {prep_factor_b:.2f}×。"
-        )
-
-        if err_a:
-            st.error(f"药A: {err_a}")
-        elif rows_a:
-            st.success(f"药A：理论用量约 {need_a:.2f} mL (含死体积与保留体积)")
+        if err_a: st.error(err_a)
+        else: 
+            st.success(f"🟠 药A ({m_unit_a}) - 4X 浓缩液")
             st.dataframe(rows_a, use_container_width=True)
 
-        st.markdown("---")
-
-        if err_b:
-            st.error(f"药B: {err_b}")
-        elif rows_b:
-            st.success(f"药B：理论用量约 {need_b:.2f} mL (含死体积与保留体积)")
+        if err_b: st.error(err_b)
+        else: 
+            st.success(f"🔵 药B ({m_unit_b}) - 4X 浓缩液")
             st.dataframe(rows_b, use_container_width=True)
 
 with tab4:
-    st.subheader("三药协同 (Combo A+B 与 Drug C) - 4× 组装")
-    st.caption("Combo 管和 C 管分别按照 4× 逻辑配制，组合 25 μL + 25 μL + 50 μL 细胞。")
-
+    st.subheader("三药协同 (Combo+C) - 4× 组装")
+    
     with st.form("combo_form"):
-        st.markdown("**体系与体积**")
-        c_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=50.0, step=5.0)
-        c_combo_vol = st.number_input("每孔 Combo (A+B) 体积 (μL)", min_value=0.0, value=25.0, step=1.0)
-        c_c_vol = st.number_input("每孔 Drug C 体积 (μL)", min_value=0.0, value=25.0, step=1.0)
+        st.markdown("**1. 药物设置**")
+        st.markdown("*Combo (A+B)*")
+        ca1, ca2, ca3 = st.columns(3)
+        with ca1: c_stock_a = st.number_input("A母液(mM)", value=10.0)
+        with ca2: c_high_a = st.number_input("A最高", value=1000.0)
+        # 默认单位 nM
+        with ca3: c_unit_combo = st.selectbox("Combo单位", ["nM", "μM"], index=0)
+        
+        cb1, cb2, cb3 = st.columns(3)
+        with cb1: c_stock_b = st.number_input("B母液(mM)", value=10.0)
+        with cb2: c_high_b = st.number_input("B最高", value=500.0)
+        with cb3: c_fold_combo = st.number_input("Combo倍数", value=4.0)
 
-        total_combo_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_combo_vol if c_combo_vol else 0
-        total_c_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_c_vol if c_c_vol else 0
-        st.caption(
-            f"Combo 管按 {total_combo_factor:.1f}× 配制；Drug C 管按 {total_c_factor:.1f}× 配制。"
-        )
-
-        st.markdown("**矩阵与用量**")
-        c_rows = st.number_input("Combo 梯度数 (行)", min_value=2, value=6, step=1)
-        c_cols = st.number_input("Drug C 梯度数 (列)", min_value=2, value=6, step=1)
-        c_reps = st.number_input("复孔数", min_value=1, value=2, step=1, format="%.0f")
-        c_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
-        c_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
-        c_keep_reserve = st.number_input(
-            "希望每管至少剩余 (mL)",
-            min_value=0.0,
-            value=6.0,
-            step=0.5,
-            help="完成稀释后希望每管保留的体积，表格会展示倒推后的“预计剩余”。",
-        )
-        c_min_pipette = st.number_input("母液最小取样量 (μL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
-        c_max_dilution = st.number_input(
-            "单步最大稀释倍数",
-            min_value=1.0,
-            value=10.0,
-            step=1.0,
-            help="控制跳跃稀释上限，避免过多中间管。",
-        )
-
-        st.markdown("**Combo (A+B) 设置**")
-        ca1, ca2, ca3, ca4 = st.columns(4)
-        with ca1:
-            c_stock_a = st.number_input("药A 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
-        with ca2:
-            c_high_a = st.number_input("药A 最高终浓度", min_value=0.0, value=1000.0, step=10.0)
-        with ca3:
-            c_stock_b = st.number_input("药B 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
-        with ca4:
-            c_high_b = st.number_input("药B 最高终浓度", min_value=0.0, value=500.0, step=10.0)
-
-        cb1, cb2 = st.columns(2)
-        with cb1:
-            c_fold_combo = st.number_input("Combo 稀释倍数", min_value=1.0, value=4.0, step=0.5)
-        with cb2:
-            c_unit_combo = st.selectbox("Combo 单位", options=["nM", "μM", "mM"], index=1)
-
-        st.markdown("**Drug C 设置**")
+        st.markdown("*Drug C*")
         cc1, cc2, cc3, cc4 = st.columns(4)
-        with cc1:
-            c_stock_c = st.number_input("Drug C 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
-        with cc2:
-            c_high_c = st.number_input("Drug C 最高终浓度", min_value=0.0, value=2000.0, step=20.0)
-        with cc3:
-            c_fold_c = st.number_input("Drug C 稀释倍数", min_value=1.0, value=4.0, step=0.5)
-        with cc4:
-            c_unit_c = st.selectbox("Drug C 单位", options=["nM", "μM", "mM"], index=1)
+        with cc1: c_stock_c = st.number_input("C母液", value=10.0)
+        with cc2: c_high_c = st.number_input("C最高", value=2000.0)
+        with cc3: c_fold_c = st.number_input("C倍数", value=4.0)
+        # 默认单位 nM
+        with cc4: c_unit_c = st.selectbox("C单位", ["nM", "μM"], index=0)
 
-        combo_submit = st.form_submit_button("生成 Combo + C 配液方案")
+        st.markdown("**2. 保留体积**")
+        c_keep_reserve = st.number_input("每管保留 (mL)", value=6.0, step=0.5)
+
+        with st.expander("⚙️ 更多参数"):
+            c_rows = st.number_input("Combo行数", value=6)
+            c_cols = st.number_input("C列数", value=6)
+            c_reps = st.number_input("复孔", value=2.0)
+            c_plates = st.number_input("板数", value=7.0)
+            c_combo_vol = st.number_input("Combo体积", value=25.0)
+            c_c_vol = st.number_input("C体积", value=25.0)
+            c_cell_vol = st.number_input("细胞体积", value=50.0)
+            c_dead_vol = st.number_input("死体积", value=2.0)
+            c_min_pipette = st.number_input("最小取样", value=2.0)
+            c_max_dilution = st.number_input("最大步长", value=10.0)
+
+        combo_submit = st.form_submit_button("生成方案")
 
     if combo_submit:
         unit_factor_map = {"nM": 0.001, "μM": 1.0, "mM": 1000.0}
-        unit_factor_combo = unit_factor_map.get(c_unit_combo, 1.0)
-        unit_factor_c = unit_factor_map.get(c_unit_c, 1.0)
-
+        
+        # 计算因子
+        total_combo_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_combo_vol
+        total_c_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_c_vol
+        
+        # 梯度生成
         targets_a = [c_high_a / (c_fold_combo ** i) for i in range(max(int(c_rows) - 1, 1))]
         targets_a.append(0)
         targets_b = [c_high_b / (c_fold_combo ** i) for i in range(max(int(c_rows) - 1, 1))]
@@ -770,53 +626,35 @@ with tab4:
         targets_c = [c_high_c / (c_fold_c ** i) for i in range(max(int(c_cols) - 1, 1))]
         targets_c.append(0)
 
+        # 用量计算
         wells_combo = c_cols * c_reps * c_plates
         wells_c = c_rows * c_reps * c_plates
+        
+        base_combo = (wells_combo * c_combo_vol) + (c_dead_vol * 1000)
+        target_combo = base_combo + c_keep_reserve * 1000
+        
+        base_c = (wells_c * c_c_vol) + (c_dead_vol * 1000)
+        target_c = base_c + c_keep_reserve * 1000
 
-        base_combo_ul = (wells_combo * c_combo_vol) + (c_dead_vol * 1000)
-        base_c_ul = (wells_c * c_c_vol) + (c_dead_vol * 1000)
-        target_combo_vol = base_combo_ul + c_keep_reserve * 1000
-        target_c_vol = base_c_ul + c_keep_reserve * 1000
-
+        # Combo 计算
         rows_combo, err_combo, need_combo = calc_combo_mix(
-            c_stock_a,
-            c_stock_b,
-            c_min_pipette,
-            targets_a,
-            targets_b,
-            total_combo_factor,
-            target_combo_vol,
-            c_unit_combo,
-            unit_factor_combo,
+            c_stock_a, c_stock_b, c_min_pipette, targets_a, targets_b,
+            total_combo_factor, target_combo, c_unit_combo, unit_factor_map[c_unit_combo]
         )
 
-        targets_c_text = ",".join(str(t) for t in targets_c)
+        # C 计算
         rows_c, err_c = calc_single(
-            c_stock_c,
-            c_min_pipette,
-            target_c_vol,
-            targets_c_text,
-            work_conc_factor=total_c_factor,
-            unit_factor=unit_factor_c,
-            unit_label=c_unit_c,
-            max_dilution=c_max_dilution,
-            work_label=f"{total_c_factor:.0f}×",
+            c_stock_c, c_min_pipette, target_c, ",".join(str(t) for t in targets_c),
+            work_conc_factor=total_c_factor, unit_factor=unit_factor_map[c_unit_c],
+            unit_label=c_unit_c, max_dilution=c_max_dilution
         )
 
-        st.markdown(
-            f"终体积 {c_cell_vol + c_combo_vol + c_c_vol:.1f} μL/孔；Combo 管 {total_combo_factor:.1f}×，Drug C 管 {total_c_factor:.1f}×。"
-        )
-
-        if err_combo:
-            st.error(err_combo)
-        elif rows_combo:
-            st.success(f"Combo：理论用量约 {need_combo:.2f} mL (含死体积与保留体积)")
+        if err_combo: st.error(err_combo)
+        else:
+            st.success(f"🔴 Combo A+B ({c_unit_combo}) - 4X")
             st.dataframe(rows_combo, use_container_width=True)
 
-        st.markdown("---")
-
-        if err_c:
-            st.error(err_c)
-        elif rows_c:
-            st.success(f"Drug C：理论用量约 {target_c_vol/1000:.2f} mL (含死体积与保留体积)")
+        if err_c: st.error(err_c)
+        else:
+            st.success(f"🔵 Drug C ({c_unit_c}) - 4X")
             st.dataframe(rows_c, use_container_width=True)
