@@ -29,6 +29,12 @@ def calc_seeding(n, sq, df, target_per_well, vol_per_well, plates, safety, wells
     return result, None
 
 
+def _round_ml_step(value_ul: float, step_ml: float = 0.5) -> float:
+    """Round to human-friendly mL increments (e.g., 0.5 / 1.0 / 2.5)."""
+    ml = value_ul / 1000
+    return round(ml / step_ml) * step_ml
+
+
 def calc_single(
     stock_mm,
     min_pipette,
@@ -47,7 +53,7 @@ def calc_single(
     if work_conc_factor <= 0:
         return None, "工作液倍数必须大于 0"
     if unit_factor <= 0:
-        return None, "浓度单位换算因子必须大于 0"
+        return None, "浓度单位换算因子必须大 0"
     if max_dilution <= 0:
         return None, "最大稀释倍数必须大于 0"
 
@@ -141,28 +147,32 @@ def calc_single(
     for res in results:
         final_conc = res["conc"] / work_conc_factor / unit_factor
         working_conc = res["conc"] / unit_factor
+        media_ml = _round_ml_step(res["vol_media"])
+        total_ml = _round_ml_step(res["final_total"])
+        reserve_ml = _round_ml_step(res["final_reserve"])
         rows.append(
             {
                 f"终浓度 ({unit_label})": final_conc,
                 f"工作液浓度 ({unit_label}, {work_label})": working_conc,
                 "取液来源": res["source_name"],
-                "取液体积 (μL)": f"{res['vol_take']:.2f}",
-                "加培养基 (μL)": f"{res['vol_media']:.1f}",
-                "该管配制总量 (μL)": f"{res['final_total']:.1f}{res['note']}",
-                "预计剩余 (μL)": f"{res['final_reserve']:.1f}",
+                "取液操作 (μL)": f"{res['vol_take']:.2f}",
+                "预加培养基 (mL)": f"{media_ml:.2f}",
+                "该管配制总量 (mL)": f"{total_ml:.2f}{res['note']}",
+                "预计剩余 (mL)": f"{reserve_ml:.2f}",
             }
         )
 
     if has_zero:
+        reserve_ml = _round_ml_step(target_prep_vol)
         rows.append(
             {
                 f"终浓度 ({unit_label})": 0,
                 f"工作液浓度 ({unit_label}, {work_label})": 0,
                 "取液来源": "不加药",
-                "取液体积 (μL)": "0",
-                "加培养基 (μL)": f"{target_prep_vol:.1f}",
-                "该管配制总量 (μL)": f"{target_prep_vol:.1f}",
-                "预计剩余 (μL)": f"{target_prep_vol:.1f}",
+                "取液操作 (μL)": "0",
+                "预加培养基 (mL)": f"{reserve_ml:.2f}",
+                "该管配制总量 (mL)": f"{reserve_ml:.2f}",
+                "预计剩余 (mL)": f"{reserve_ml:.2f}",
             }
         )
 
@@ -304,6 +314,9 @@ def calc_combo_mix(
     rows = []
     work_label = f"{prep_factor:.0f}×"
     for res in results:
+        media_ml = _round_ml_step(res["vol_media"])
+        total_ml = _round_ml_step(res["final_total"])
+        reserve_ml = _round_ml_step(res["final_reserve"])
         rows.append(
             {
                 f"A终浓度 ({unit_label})": res["conc_a"] / prep_factor / unit_factor,
@@ -311,12 +324,13 @@ def calc_combo_mix(
                 f"管内浓度 ({unit_label}, {work_label})": f"A:{res['conc_a']/unit_factor:.2g}; B:{res['conc_b']/unit_factor:.2g}",
                 "取液来源": res["source_name"],
                 "取液操作": res["take_display"],
-                "加培养基 (μL)": f"{res['vol_media']:.1f}",
-                "该管总量 (μL)": f"{res['final_total']:.1f}{res['note']}",
-                "预计剩余 (μL)": f"{res['final_reserve']:.1f}",
+                "预加培养基 (mL)": f"{media_ml:.2f}",
+                "该管总量 (mL)": f"{total_ml:.2f}{res['note']}",
+                "预计剩余 (mL)": f"{reserve_ml:.2f}",
             }
         )
 
+    reserve_ml = _round_ml_step(target_prep_vol)
     rows.append(
         {
             f"A终浓度 ({unit_label})": 0,
@@ -324,9 +338,9 @@ def calc_combo_mix(
             f"管内浓度 ({unit_label}, {work_label})": "0",
             "取液来源": "-",
             "取液操作": "0",
-            "加培养基 (μL)": f"{target_prep_vol:.1f}",
-            "该管总量 (μL)": f"{target_prep_vol:.1f}",
-            "预计剩余 (μL)": f"{target_prep_vol:.1f}",
+            "预加培养基 (mL)": f"{reserve_ml:.2f}",
+            "该管总量 (mL)": f"{reserve_ml:.2f}",
+            "预计剩余 (mL)": f"{reserve_ml:.2f}",
         }
     )
 
@@ -579,7 +593,6 @@ with tab3:
         m_cols = st.number_input("矩阵列数 (B 梯度数)", min_value=2, value=6, step=1)
         m_reps = st.number_input("每组合复孔数", min_value=1, value=2, step=1, format="%.0f")
         m_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
-        m_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
         m_keep_reserve = st.number_input(
             "希望每管至少保留安全余量 (mL)",
             min_value=0.0,
@@ -640,11 +653,11 @@ with tab3:
             wells_for_a,
             m_add_a,
             m_plates,
-            m_dead_vol,
-            m_keep_reserve,
-            m_unit_a,
-            unit_factor_a,
-            m_max_dilution,
+            dead_vol_ml=0.0,
+            keep_reserve_ml=m_keep_reserve,
+            unit_label=m_unit_a,
+            unit_factor=unit_factor_a,
+            max_dilution=m_max_dilution,
         )
         rows_b, err_b, need_b = calc_practical_matrix_drug(
             m_stock_b,
@@ -654,11 +667,11 @@ with tab3:
             wells_for_b,
             m_add_b,
             m_plates,
-            m_dead_vol,
-            m_keep_reserve,
-            m_unit_b,
-            unit_factor_b,
-            m_max_dilution,
+            dead_vol_ml=0.0,
+            keep_reserve_ml=m_keep_reserve,
+            unit_label=m_unit_b,
+            unit_factor=unit_factor_b,
+            max_dilution=m_max_dilution,
         )
 
         st.markdown(
@@ -668,7 +681,7 @@ with tab3:
         if err_a:
             st.error(f"药A: {err_a}")
         elif rows_a:
-            st.success(f"药A：理论用量约 {need_a:.2f} mL (含死体积与保留体积)")
+            st.success(f"药A：理论用量约 {need_a:.2f} mL (含保留体积)")
             st.dataframe(rows_a, use_container_width=True)
 
         st.markdown("---")
@@ -676,7 +689,7 @@ with tab3:
         if err_b:
             st.error(f"药B: {err_b}")
         elif rows_b:
-            st.success(f"药B：理论用量约 {need_b:.2f} mL (含死体积与保留体积)")
+            st.success(f"药B：理论用量约 {need_b:.2f} mL (含保留体积)")
             st.dataframe(rows_b, use_container_width=True)
 
 with tab4:
@@ -700,7 +713,6 @@ with tab4:
         c_cols = st.number_input("Drug C 梯度数 (列)", min_value=2, value=6, step=1)
         c_reps = st.number_input("复孔数", min_value=1, value=2, step=1, format="%.0f")
         c_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
-        c_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
         c_keep_reserve = st.number_input(
             "希望每管至少保留安全余量 (mL)",
             min_value=0.0,
@@ -762,8 +774,8 @@ with tab4:
         wells_combo = c_cols * c_reps * c_plates
         wells_c = c_rows * c_reps * c_plates
 
-        base_combo_ul = (wells_combo * c_combo_vol) + (c_dead_vol * 1000)
-        base_c_ul = (wells_c * c_c_vol) + (c_dead_vol * 1000)
+        base_combo_ul = (wells_combo * c_combo_vol) + 0
+        base_c_ul = (wells_c * c_c_vol) + 0
         target_combo_vol = base_combo_ul + c_keep_reserve * 1000
         target_c_vol = base_c_ul + c_keep_reserve * 1000
 
@@ -793,13 +805,13 @@ with tab4:
         )
 
         st.markdown(
-            f"终体积 {c_cell_vol + c_combo_vol + c_c_vol:.1f} μL/孔Combo 管 {total_combo_factor:.1f}×，Drug C 管 {total_c_factor:.1f}×。"
+            f"终体积 {c_cell_vol + c_combo_vol + c_c_vol:.1f} μL/孔；Combo 管 {total_combo_factor:.1f}×，Drug C 管 {total_c_factor:.1f}×。"
         )
 
         if err_combo:
             st.error(err_combo)
         elif rows_combo:
-            st.success(f"Combo：理论用量约 {need_combo:.2f} mL (含死体积与保留体积)")
+            st.success(f"Combo：理论用量约 {need_combo:.2f} mL (含保留体积)")
             st.dataframe(rows_combo, use_container_width=True)
 
         st.markdown("---")
@@ -807,5 +819,5 @@ with tab4:
         if err_c:
             st.error(err_c)
         elif rows_c:
-            st.success(f"Drug C：理论用量约 {target_c_vol/1000:.2f} mL (含死体积与保留体积)")
+            st.success(f"Drug C：理论用量约 {target_c_vol/1000:.2f} mL (含保留体积)")
             st.dataframe(rows_c, use_container_width=True)
