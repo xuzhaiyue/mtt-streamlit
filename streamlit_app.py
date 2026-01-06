@@ -637,4 +637,186 @@ with tab3:
 
         targets_a = [m_high_a / (m_fold_a ** i) for i in range(max(int(m_rows) - 1, 1))]
         targets_a.append(0)
-        targets_b = [m_high_b / (m_fold_b ** i) for i in range(max(int(m_cols) - 1, 1)))]
+        targets_b = [m_high_b / (m_fold_b ** i) for i in range(max(int(m_cols) - 1, 1))]
+        targets_b.append(0)
+
+        wells_for_a = m_cols * m_reps
+        wells_for_b = m_rows * m_reps
+
+        rows_a, err_a, need_a = calc_practical_matrix_drug(
+            m_stock_a,
+            m_min_pipette,
+            targets_a,
+            prep_factor,
+            wells_for_a,
+            m_add_a,
+            m_plates,
+            m_dead_vol,
+            m_keep_reserve,
+            m_unit_a,
+            unit_factor_a,
+            m_max_dilution,
+        )
+        rows_b, err_b, need_b = calc_practical_matrix_drug(
+            m_stock_b,
+            m_min_pipette,
+            targets_b,
+            prep_factor_b,
+            wells_for_b,
+            m_add_b,
+            m_plates,
+            m_dead_vol,
+            m_keep_reserve,
+            m_unit_b,
+            unit_factor_b,
+            m_max_dilution,
+        )
+
+        st.markdown(
+            f"终体积约 {total_vol:.1f} μL/孔；药A管浓度 {prep_factor:.2f}×，药B管浓度 {prep_factor_b:.2f}×。"
+        )
+
+        if err_a:
+            st.error(f"药A: {err_a}")
+        elif rows_a:
+            st.success(f"药A：理论用量约 {need_a:.2f} mL (含死体积与保留体积)")
+            st.dataframe(rows_a, use_container_width=True)
+
+        st.markdown("---")
+
+        if err_b:
+            st.error(f"药B: {err_b}")
+        elif rows_b:
+            st.success(f"药B：理论用量约 {need_b:.2f} mL (含死体积与保留体积)")
+            st.dataframe(rows_b, use_container_width=True)
+
+with tab4:
+    st.subheader("三药协同 (Combo A+B 与 Drug C) - 4× 组装")
+    st.caption("Combo 管和 C 管分别按照 4× 逻辑配制，组合 25 μL + 25 μL + 50 μL 细胞。")
+
+    with st.form("combo_form"):
+        st.markdown("**体系与体积**")
+        c_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=50.0, step=5.0)
+        c_combo_vol = st.number_input("每孔 Combo (A+B) 体积 (μL)", min_value=0.0, value=25.0, step=1.0)
+        c_c_vol = st.number_input("每孔 Drug C 体积 (μL)", min_value=0.0, value=25.0, step=1.0)
+
+        total_combo_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_combo_vol if c_combo_vol else 0
+        total_c_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_c_vol if c_c_vol else 0
+        st.caption(
+            f"Combo 管按 {total_combo_factor:.1f}× 配制；Drug C 管按 {total_c_factor:.1f}× 配制。"
+        )
+
+        st.markdown("**矩阵与用量**")
+        c_rows = st.number_input("Combo 梯度数 (行)", min_value=2, value=6, step=1)
+        c_cols = st.number_input("Drug C 梯度数 (列)", min_value=2, value=6, step=1)
+        c_reps = st.number_input("复孔数", min_value=1, value=2, step=1, format="%.0f")
+        c_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
+        c_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
+        c_keep_reserve = st.number_input(
+            "希望每管至少剩余 (mL)",
+            min_value=0.0,
+            value=6.0,
+            step=0.5,
+            help="完成稀释后希望每管保留的体积，表格会展示倒推后的“预计剩余”。",
+        )
+        c_min_pipette = st.number_input("母液最小取样量 (μL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
+        c_max_dilution = st.number_input(
+            "单步最大稀释倍数",
+            min_value=1.0,
+            value=10.0,
+            step=1.0,
+            help="控制跳跃稀释上限，避免过多中间管。",
+        )
+
+        st.markdown("**Combo (A+B) 设置**")
+        ca1, ca2, ca3, ca4 = st.columns(4)
+        with ca1:
+            c_stock_a = st.number_input("药A 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
+        with ca2:
+            c_high_a = st.number_input("药A 最高终浓度", min_value=0.0, value=1000.0, step=10.0)
+        with ca3:
+            c_stock_b = st.number_input("药B 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
+        with ca4:
+            c_high_b = st.number_input("药B 最高终浓度", min_value=0.0, value=500.0, step=10.0)
+
+        cb1, cb2 = st.columns(2)
+        with cb1:
+            c_fold_combo = st.number_input("Combo 稀释倍数", min_value=1.0, value=4.0, step=0.5)
+        with cb2:
+            c_unit_combo = st.selectbox("Combo 单位", options=["nM", "μM", "mM"], index=1)
+
+        st.markdown("**Drug C 设置**")
+        cc1, cc2, cc3, cc4 = st.columns(4)
+        with cc1:
+            c_stock_c = st.number_input("Drug C 母液 (mM)", min_value=0.0, value=10.0, step=0.5, format="%.2f")
+        with cc2:
+            c_high_c = st.number_input("Drug C 最高终浓度", min_value=0.0, value=2000.0, step=20.0)
+        with cc3:
+            c_fold_c = st.number_input("Drug C 稀释倍数", min_value=1.0, value=4.0, step=0.5)
+        with cc4:
+            c_unit_c = st.selectbox("Drug C 单位", options=["nM", "μM", "mM"], index=1)
+
+        combo_submit = st.form_submit_button("生成 Combo + C 配液方案")
+
+    if combo_submit:
+        unit_factor_map = {"nM": 0.001, "μM": 1.0, "mM": 1000.0}
+        unit_factor_combo = unit_factor_map.get(c_unit_combo, 1.0)
+        unit_factor_c = unit_factor_map.get(c_unit_c, 1.0)
+
+        targets_a = [c_high_a / (c_fold_combo ** i) for i in range(max(int(c_rows) - 1, 1))]
+        targets_a.append(0)
+        targets_b = [c_high_b / (c_fold_combo ** i) for i in range(max(int(c_rows) - 1, 1))]
+        targets_b.append(0)
+        targets_c = [c_high_c / (c_fold_c ** i) for i in range(max(int(c_cols) - 1, 1))]
+        targets_c.append(0)
+
+        wells_combo = c_cols * c_reps * c_plates
+        wells_c = c_rows * c_reps * c_plates
+
+        base_combo_ul = (wells_combo * c_combo_vol) + (c_dead_vol * 1000)
+        base_c_ul = (wells_c * c_c_vol) + (c_dead_vol * 1000)
+        target_combo_vol = base_combo_ul + c_keep_reserve * 1000
+        target_c_vol = base_c_ul + c_keep_reserve * 1000
+
+        rows_combo, err_combo, need_combo = calc_combo_mix(
+            c_stock_a,
+            c_stock_b,
+            c_min_pipette,
+            targets_a,
+            targets_b,
+            total_combo_factor,
+            target_combo_vol,
+            c_unit_combo,
+            unit_factor_combo,
+        )
+
+        targets_c_text = ",".join(str(t) for t in targets_c)
+        rows_c, err_c = calc_single(
+            c_stock_c,
+            c_min_pipette,
+            target_c_vol,
+            targets_c_text,
+            work_conc_factor=total_c_factor,
+            unit_factor=unit_factor_c,
+            unit_label=c_unit_c,
+            max_dilution=c_max_dilution,
+            work_label=f"{total_c_factor:.0f}×",
+        )
+
+        st.markdown(
+            f"终体积 {c_cell_vol + c_combo_vol + c_c_vol:.1f} μL/孔；Combo 管 {total_combo_factor:.1f}×，Drug C 管 {total_c_factor:.1f}×。"
+        )
+
+        if err_combo:
+            st.error(err_combo)
+        elif rows_combo:
+            st.success(f"Combo：理论用量约 {need_combo:.2f} mL (含死体积与保留体积)")
+            st.dataframe(rows_combo, use_container_width=True)
+
+        st.markdown("---")
+
+        if err_c:
+            st.error(err_c)
+        elif rows_c:
+            st.success(f"Drug C：理论用量约 {target_c_vol/1000:.2f} mL (含死体积与保留体积)")
+            st.dataframe(rows_c, use_container_width=True)
