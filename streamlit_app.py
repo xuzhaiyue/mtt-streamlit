@@ -564,15 +564,15 @@ with tab2:
 with tab3:
     st.subheader("双药联合矩阵 (Checkerboard) - 4× 配液管")
     st.caption(
-        "按照 50 μL 细胞 + 25 μL 药A + 25 μL 药B 的常见 100 μL 体系设计，"
+        "按照 90 μL 细胞 + 45 μL 药A + 45 μL 药B 的常见 180 μL 体系设计，"
         "配液管浓度默认为终浓度的 4×。"
     )
 
     with st.form("matrix_form"):
         st.markdown("**体系与体积**")
-        m_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=50.0, step=5.0)
-        m_add_a = st.number_input("每孔加药A体积 (μL)", min_value=0.0, value=25.0, step=1.0)
-        m_add_b = st.number_input("每孔加药B体积 (μL)", min_value=0.0, value=25.0, step=1.0)
+        m_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=90.0, step=5.0)
+        m_add_a = st.number_input("每孔加药A体积 (μL)", min_value=0.0, value=45.0, step=1.0)
+        m_add_b = st.number_input("每孔加药B体积 (μL)", min_value=0.0, value=45.0, step=1.0)
 
         st.markdown("**矩阵与用量**")
         m_rows = st.number_input("矩阵行数 (A 梯度数)", min_value=2, value=6, step=1)
@@ -581,11 +581,11 @@ with tab3:
         m_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
         m_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
         m_keep_reserve = st.number_input(
-            "希望每管至少剩余 (mL)",
+            "希望每管至少保留安全余量 (mL)",
             min_value=0.0,
-            value=8.0,
+            value=1.0,
             step=0.5,
-            help="完成稀释后希望每管保留的体积，实际表格会显示倒推后的“预计剩余”。",
+            help="这是做完所有板、扣除传递后仍希望留在该管中的安全余量，不需要丢弃。",
         )
 
         st.markdown("**浓度梯度**")
@@ -681,13 +681,13 @@ with tab3:
 
 with tab4:
     st.subheader("三药协同 (Combo A+B 与 Drug C) - 4× 组装")
-    st.caption("Combo 管和 C 管分别按照 4× 逻辑配制，组合 25 μL + 25 μL + 50 μL 细胞。")
+    st.caption("Combo 管和 C 管分别按照 4× 逻辑配制，组合 45 μL + 45 μL + 90 μL 细胞。")
 
     with st.form("combo_form"):
         st.markdown("**体系与体积**")
-        c_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=50.0, step=5.0)
-        c_combo_vol = st.number_input("每孔 Combo (A+B) 体积 (μL)", min_value=0.0, value=25.0, step=1.0)
-        c_c_vol = st.number_input("每孔 Drug C 体积 (μL)", min_value=0.0, value=25.0, step=1.0)
+        c_cell_vol = st.number_input("孔内细胞体积 (μL)", min_value=0.0, value=90.0, step=5.0)
+        c_combo_vol = st.number_input("每孔 Combo (A+B) 体积 (μL)", min_value=0.0, value=45.0, step=1.0)
+        c_c_vol = st.number_input("每孔 Drug C 体积 (μL)", min_value=0.0, value=45.0, step=1.0)
 
         total_combo_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_combo_vol if c_combo_vol else 0
         total_c_factor = (c_cell_vol + c_combo_vol + c_c_vol) / c_c_vol if c_c_vol else 0
@@ -702,11 +702,11 @@ with tab4:
         c_plates = st.number_input("板子数量", min_value=1, value=7, step=1, format="%.0f")
         c_dead_vol = st.number_input("加药槽死体积 (mL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
         c_keep_reserve = st.number_input(
-            "希望每管至少剩余 (mL)",
+            "希望每管至少保留安全余量 (mL)",
             min_value=0.0,
-            value=6.0,
+            value=1.0,
             step=0.5,
-            help="完成稀释后希望每管保留的体积，表格会展示倒推后的“预计剩余”。",
+            help="这是配完所有板、完成传递后仍希望留在管中的安全余量，不需要丢弃。",
         )
         c_min_pipette = st.number_input("母液最小取样量 (μL)", min_value=0.0, value=2.0, step=0.5, format="%.1f")
         c_max_dilution = st.number_input(
@@ -793,7 +793,7 @@ with tab4:
         )
 
         st.markdown(
-            f"终体积 {c_cell_vol + c_combo_vol + c_c_vol:.1f} μL/孔；Combo 管 {total_combo_factor:.1f}×，Drug C 管 {total_c_factor:.1f}×。"
+            f"终体积 {c_cell_vol + c_combo_vol + c_c_vol:.1f} μL/孔Combo 管 {total_combo_factor:.1f}×，Drug C 管 {total_c_factor:.1f}×。"
         )
 
         if err_combo:
