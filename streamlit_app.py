@@ -45,6 +45,7 @@ def calc_single(
     unit_label="μM",
     max_dilution=10.0,
     work_label=None,
+    uniform_dilution=True,
 ):
     if stock_mm <= 0:
         return None, "母液浓度必须大于 0"
@@ -53,7 +54,7 @@ def calc_single(
     if work_conc_factor <= 0:
         return None, "工作液倍数必须大于 0"
     if unit_factor <= 0:
-        return None, "浓度单位换算因子必须大 0"
+        return None, "浓度单位换算因子必须大于 0"
     if max_dilution <= 0:
         return None, "最大稀释倍数必须大于 0"
 
@@ -78,69 +79,110 @@ def calc_single(
     results = []
 
     calc_data = []
-    # 选择每个浓度的“上一级来源”：优先选择稀释倍数最大的、但不超过 max_dilution 的浓度
-    for i, current_c in enumerate(targets):
-        is_highest = i == 0
-        if is_highest:
-            source_c = stock_um
-            source_name = "母液 Stock"
-        else:
-            best_source = None
-            best_factor = 0
-            for candidate in targets[:i]:
-                factor = candidate / current_c
-                if factor <= max_dilution and factor > best_factor:
-                    best_source = candidate
-                    best_factor = factor
-            if best_source is None:
-                best_source = targets[i - 1]
-                best_factor = best_source / current_c
-            source_c = best_source
-            source_name = f"上一管 ({source_c / unit_factor:.3g} {unit_label})，稀释 {best_factor:.2f}×"
-        calc_data.append(
-            {
-                "conc": current_c,
-                "source_c": source_c,
-                "source_name": source_name,
-                "is_stock": is_highest,
-            }
-        )
+    ratios = [targets[i - 1] / targets[i] for i in range(1, len(targets))]
+    uniform_ratio = ratios[0] if ratios else None
+    can_uniform = (
+        uniform_dilution
+        and uniform_ratio
+        and uniform_ratio > 1
+        and all(abs(r - uniform_ratio) < 1e-6 for r in ratios)
+    )
+    if can_uniform:
+        base_total_make = target_prep_vol * uniform_ratio / (uniform_ratio - 1)
+        vol_take_stock = (targets[0] * base_total_make) / stock_um
+        if vol_take_stock < min_pipette:
+            scale = min_pipette / vol_take_stock
+            base_total_make *= scale
+        for i, current_c in enumerate(targets):
+            is_highest = i == 0
+            if is_highest:
+                source_c = stock_um
+                source_name = "母液 Stock"
+                vol_take = (current_c * base_total_make) / source_c
+            else:
+                source_c = targets[i - 1]
+                source_name = f"上一管 ({source_c / unit_factor:.3g} {unit_label})，稀释 {uniform_ratio:.2f}×"
+                vol_take = base_total_make / uniform_ratio
+            vol_media = base_total_make - vol_take
+            final_reserve = base_total_make - vol_take
+            calc_data.append(
+                {
+                    "conc": current_c,
+                    "source_c": source_c,
+                    "source_name": source_name,
+                    "is_stock": is_highest,
+                    "vol_take": vol_take,
+                    "vol_media": vol_media,
+                    "final_total": base_total_make,
+                    "final_reserve": final_reserve,
+                    "note": "",
+                }
+            )
+        results = calc_data
+    else:
+        # 选择每个浓度的“上一级来源”：优先选择稀释倍数最大的、但不超过 max_dilution 的浓度
+        for i, current_c in enumerate(targets):
+            is_highest = i == 0
+            if is_highest:
+                source_c = stock_um
+                source_name = "母液 Stock"
+            else:
+                best_source = None
+                best_factor = 0
+                for candidate in targets[:i]:
+                    factor = candidate / current_c
+                    if factor <= max_dilution and factor > best_factor:
+                        best_source = candidate
+                        best_factor = factor
+                if best_source is None:
+                    best_source = targets[i - 1]
+                    best_factor = best_source / current_c
+                source_c = best_source
+                source_name = f"上一管 ({source_c / unit_factor:.3g} {unit_label})，稀释 {best_factor:.2f}×"
+            calc_data.append(
+                {
+                    "conc": current_c,
+                    "source_c": source_c,
+                    "source_name": source_name,
+                    "is_stock": is_highest,
+                }
+            )
 
-    for i in range(len(calc_data) - 1, -1, -1):
-        item = calc_data[i]
-        conc = item["conc"]
-        source_c = item["source_c"]
+        for i in range(len(calc_data) - 1, -1, -1):
+            item = calc_data[i]
+            conc = item["conc"]
+            source_c = item["source_c"]
 
-        take_from_me = transfer_needs.get(conc, 0)
-        total_make_vol = target_prep_vol + take_from_me
-        vol_take = (conc * total_make_vol) / source_c
+            take_from_me = transfer_needs.get(conc, 0)
+            total_make_vol = target_prep_vol + take_from_me
+            vol_take = (conc * total_make_vol) / source_c
 
-        if item["is_stock"] and vol_take < min_pipette:
-            factor = min_pipette / vol_take
-            vol_take = min_pipette
-            total_make_vol = total_make_vol * factor
-            note = " (已扩大体积以满足母液取样)"
-        else:
-            note = ""
+            if item["is_stock"] and vol_take < min_pipette:
+                factor = min_pipette / vol_take
+                vol_take = min_pipette
+                total_make_vol = total_make_vol * factor
+                note = " (已扩大体积以满足母液取样)"
+            else:
+                note = ""
 
-        if not item["is_stock"]:
-            transfer_needs[source_c] = vol_take
+            if not item["is_stock"]:
+                transfer_needs[source_c] = vol_take
 
-        vol_media = total_make_vol - vol_take
-        final_reserve = total_make_vol - take_from_me
+            vol_media = total_make_vol - vol_take
+            final_reserve = total_make_vol - take_from_me
 
-        item.update(
-            {
-                "vol_take": vol_take,
-                "vol_media": vol_media,
-                "final_total": total_make_vol,
-                "final_reserve": final_reserve,
-                "note": note,
-            }
-        )
-        results.append(item)
+            item.update(
+                {
+                    "vol_take": vol_take,
+                    "vol_media": vol_media,
+                    "final_total": total_make_vol,
+                    "final_reserve": final_reserve,
+                    "note": note,
+                }
+            )
+            results.append(item)
 
-    results.reverse()
+        results.reverse()
 
     rows = []
     work_label = work_label or f"{work_conc_factor:.0f}×"
