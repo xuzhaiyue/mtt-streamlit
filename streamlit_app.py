@@ -35,6 +35,10 @@ def _round_ml_step(value_ul: float, step_ml: float = 0.5) -> float:
     return round(ml / step_ml) * step_ml
 
 
+def _format_conc(value: float) -> str:
+    return f"{value:g}"
+
+
 def calc_single(
     stock_mm,
     min_pipette,
@@ -95,16 +99,17 @@ def calc_single(
             base_total_make *= scale
         for i, current_c in enumerate(targets):
             is_highest = i == 0
+            downstream_transfer = base_total_make / uniform_ratio if i < len(targets) - 1 else 0
             if is_highest:
                 source_c = stock_um
                 source_name = "母液 Stock"
                 vol_take = (current_c * base_total_make) / source_c
             else:
                 source_c = targets[i - 1]
-                source_name = f"上一管 ({source_c / unit_factor:.3g} {unit_label})，稀释 {uniform_ratio:.2f}×"
+                source_name = f"上一管 ({_format_conc(source_c / unit_factor)} {unit_label})，稀释 {uniform_ratio:.2f}×"
                 vol_take = base_total_make / uniform_ratio
             vol_media = base_total_make - vol_take
-            final_reserve = base_total_make - vol_take
+            final_reserve = base_total_make - downstream_transfer
             calc_data.append(
                 {
                     "conc": current_c,
@@ -114,6 +119,7 @@ def calc_single(
                     "vol_take": vol_take,
                     "vol_media": vol_media,
                     "final_total": base_total_make,
+                    "downstream_transfer": downstream_transfer,
                     "final_reserve": final_reserve,
                     "note": "",
                 }
@@ -138,7 +144,7 @@ def calc_single(
                     best_source = targets[i - 1]
                     best_factor = best_source / current_c
                 source_c = best_source
-                source_name = f"上一管 ({source_c / unit_factor:.3g} {unit_label})，稀释 {best_factor:.2f}×"
+                source_name = f"上一管 ({_format_conc(source_c / unit_factor)} {unit_label})，稀释 {best_factor:.2f}×"
             calc_data.append(
                 {
                     "conc": current_c,
@@ -166,7 +172,7 @@ def calc_single(
                 note = ""
 
             if not item["is_stock"]:
-                transfer_needs[source_c] = vol_take
+                transfer_needs[source_c] = transfer_needs.get(source_c, 0) + vol_take
 
             vol_media = total_make_vol - vol_take
             final_reserve = total_make_vol - take_from_me
@@ -176,6 +182,7 @@ def calc_single(
                     "vol_take": vol_take,
                     "vol_media": vol_media,
                     "final_total": total_make_vol,
+                    "downstream_transfer": take_from_me,
                     "final_reserve": final_reserve,
                     "note": note,
                 }
@@ -189,9 +196,10 @@ def calc_single(
     for res in results:
         final_conc = res["conc"] / work_conc_factor / unit_factor
         working_conc = res["conc"] / unit_factor
-        media_ml = _round_ml_step(res["vol_media"])
-        total_ml = _round_ml_step(res["final_total"])
-        reserve_ml = _round_ml_step(res["final_reserve"])
+        media_ml = res["vol_media"] / 1000
+        total_ml = res["final_total"] / 1000
+        downstream_ml = res.get("downstream_transfer", 0) / 1000
+        reserve_ml = res["final_reserve"] / 1000
         rows.append(
             {
                 f"终浓度 ({unit_label})": final_conc,
@@ -200,12 +208,13 @@ def calc_single(
                 "取液操作 (μL)": f"{res['vol_take']:.2f}",
                 "预加培养基 (mL)": f"{media_ml:.2f}",
                 "该管配制总量 (mL)": f"{total_ml:.2f}{res['note']}",
-                "预计剩余 (mL)": f"{reserve_ml:.2f}",
+                "给下游取走 (mL)": f"{downstream_ml:.2f}",
+                "加板可用量 (mL)": f"{reserve_ml:.2f}",
             }
         )
 
     if has_zero:
-        reserve_ml = _round_ml_step(target_prep_vol)
+        reserve_ml = target_prep_vol / 1000
         rows.append(
             {
                 f"终浓度 ({unit_label})": 0,
@@ -214,7 +223,8 @@ def calc_single(
                 "取液操作 (μL)": "0",
                 "预加培养基 (mL)": f"{reserve_ml:.2f}",
                 "该管配制总量 (mL)": f"{reserve_ml:.2f}",
-                "预计剩余 (mL)": f"{reserve_ml:.2f}",
+                "给下游取走 (mL)": "0.00",
+                "加板可用量 (mL)": f"{reserve_ml:.2f}",
             }
         )
 
@@ -626,7 +636,7 @@ with tab2:
         elif rows:
             st.caption(
                 f"理论最低 {theoretical_need:.1f} μL；含预留 {s1_extra_ratio:.0f}% 建议至少 {recommended_need:.1f} μL；"
-                f"本次按 {effective_target_vol:.1f} μL 作为每管保留体积计算（表格“预计剩余”列为倒推后的实际值）。"
+                f"本次按 {effective_target_vol:.1f} μL 作为每个浓度最终加板可用量计算。"
                 f"总共覆盖 {total_wells:.0f} 个孔"
                 + (
                     f"，其中 0 {s1_unit} 阴性对照 {control_wells:.0f} 孔"
@@ -634,6 +644,7 @@ with tab2:
                     else ""
                 )
             )
+            st.caption("加板可用量 = 该管配好后，扣除继续配低浓度所取走的体积；不是该管刚配出来的总量。")
             if shortage_warning:
                 st.warning(
                     "您输入的目标体积小于建议值，已自动使用建议值计算，建议适当加大以满足传递体积。"
