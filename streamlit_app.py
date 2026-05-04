@@ -404,6 +404,13 @@ st.caption("基于 Streamlit 的手机友好版本，输入参数后点击按钮
 
 with tab1:
     st.subheader("细胞计数与铺板")
+    mtt_timepoint = st.selectbox(
+        "MTT 时间点",
+        options=["72 h", "Day 5"],
+        index=0,
+        help="72 h 默认 2000 cells/well；Day 5 默认 1000 cells/well。",
+    )
+    default_target_cell = 2000.0 if mtt_timepoint == "72 h" else 1000.0
     with st.form("seed_form"):
         st.markdown("**细胞计数计算器**")
         count_num = st.number_input(
@@ -431,8 +438,9 @@ with tab1:
         target_cell_per_well = st.number_input(
             "目标每孔细胞数 (个)",
             min_value=0.0,
-            value=5000.0,
+            value=default_target_cell,
             step=100.0,
+            key=f"target_cell_per_well_{mtt_timepoint}",
         )
         well_vol_ml = st.number_input(
             "每孔体积 (mL)",
@@ -442,15 +450,15 @@ with tab1:
             format="%.2f",
         )
         wells_per_plate = st.number_input(
-            "每块实际使用孔数",
+            "每个细胞系实际使用孔数",
             min_value=1.0,
             max_value=96.0,
-            value=72.0,
+            value=16.0,
             step=1.0,
             format="%.0f",
         )
         plate_num = st.number_input(
-            "计划铺板数量 (块)",
+            "计划细胞系/板数",
             min_value=1.0,
             value=1.0,
             step=1.0,
@@ -459,10 +467,11 @@ with tab1:
         seed_safety = st.number_input(
             "配液余量 (mL)",
             min_value=0.0,
-            value=2.0,
-            step=0.5,
+            value=0.6,
+            step=0.1,
             format="%.1f",
         )
+        st.caption("按新 protocol：每个细胞系 8 个条件 × 2 复孔 = 16 wells；每孔 90 μL，实际建议每个细胞系配约 2 mL。")
         seed_submit = st.form_submit_button("计算铺板方案")
 
     if seed_submit:
@@ -483,6 +492,7 @@ with tab1:
 
 with tab2:
     st.subheader("单药梯度配制")
+    st.caption("新 protocol：90 μL cell suspension + 90 μL 2× drug medium；final volume = 180 μL/well。")
     with st.form("single_form"):
         st.markdown("**母液与限制**")
         s1_stock = st.number_input(
@@ -509,9 +519,21 @@ with tab2:
         )
         st.caption("默认按 90 μL 细胞悬液 + 90 μL 2× 工作液 (总 180 μL) 计算；如体系不同，可调整数值。")
 
-        s1_replicates = 2
-        s1_control_reps = 2
-        st.caption("复孔与 0 μM 阴性对照默认各 2 孔/板，如需调整请在复制后自行修改参数。")
+        s1_cell_lines_per_plate = st.number_input(
+            "每块板细胞系数",
+            min_value=1.0,
+            value=3.0,
+            step=1.0,
+            format="%.0f",
+        )
+        s1_replicates = st.number_input(
+            "technical repeats",
+            min_value=1.0,
+            value=2.0,
+            step=1.0,
+            format="%.0f",
+        )
+        s1_control_reps = int(s1_cell_lines_per_plate * s1_replicates)
         s1_plate_num = st.number_input(
             "需要的板子数量",
             min_value=1.0,
@@ -522,10 +544,11 @@ with tab2:
         s1_extra_ratio = st.number_input(
             "额外预留比例 (%)",
             min_value=0.0,
-            value=10.0,
+            value=0.0,
             step=5.0,
             format="%.0f",
         )
+        st.caption("按 protocol：每个浓度每块板 3 个细胞系 × 2 孔 = 6 wells；理论 540 μL，默认每浓度配 800 μL/plate。")
 
         st.markdown("**浓度梯度设置 - 自动按高到低稀释**")
         s1_unit = st.selectbox(
@@ -536,17 +559,19 @@ with tab2:
         )
         s1_targets = st.text_input(
             "输入目标浓度 (逗号分隔)",
-            value="0, 1, 5, 10, 50, 100",
+            value="0, 1, 5, 10, 50, 100, 500, 1000",
         )
 
-        base_needed = s1_add_vol * s1_replicates * s1_plate_num
-        suggest_min = base_needed * (1 + s1_extra_ratio / 100)
+        wells_per_conc_per_plate = s1_cell_lines_per_plate * s1_replicates
+        base_needed = s1_add_vol * wells_per_conc_per_plate * s1_plate_num
+        protocol_min = 800.0 * s1_plate_num
+        suggest_min = max(base_needed * (1 + s1_extra_ratio / 100), protocol_min)
         s1_plan_vol = st.number_input(
             "每管希望最终至少保留体积 (μL)",
             min_value=0.0,
             value=float(int(suggest_min) if suggest_min > 0 else 0),
             step=50.0,
-            help="填写完成稀释后希望每管至少剩余的体积（不含被后续取走的体积）。建议略高于理论最小值。",
+            help="按本 protocol 默认 800 μL/plate；如果多个板共用同一培养基，可按板数自动放大。",
         )
         s1_max_dilution = st.number_input(
             "单步最大稀释倍数 (默认 10×，越大跳跃越多)",
@@ -565,8 +590,8 @@ with tab2:
                 targets_text = f"{s1_targets},0"
 
         extra_factor = 1 + s1_extra_ratio / 100
-        theoretical_need = s1_add_vol * s1_replicates * s1_plate_num
-        recommended_need = theoretical_need * extra_factor
+        theoretical_need = s1_add_vol * wells_per_conc_per_plate * s1_plate_num
+        recommended_need = max(theoretical_need * extra_factor, protocol_min)
 
         unit_factor_map = {"nM": 0.001, "μM": 1.0, "mM": 1000.0}
         unit_factor = unit_factor_map.get(s1_unit, 1.0)
@@ -579,7 +604,7 @@ with tab2:
 
         non_zero_targets = [t for t in parsed_targets if t != 0]
         has_zero = any(t == 0 for t in parsed_targets)
-        total_wells = len(non_zero_targets) * s1_replicates * s1_plate_num
+        total_wells = len(non_zero_targets) * wells_per_conc_per_plate * s1_plate_num
         control_wells = (s1_control_reps * s1_plate_num) if has_zero else 0
         total_wells += control_wells
 
