@@ -559,7 +559,7 @@ with tab2:
         )
         s1_targets = st.text_input(
             "输入目标浓度 (逗号分隔)",
-            value="0, 1, 5, 10, 50, 100, 500, 1000",
+            value="0, 1, 3, 10, 30, 100, 300, 1000",
         )
 
         wells_per_conc_per_plate = s1_cell_lines_per_plate * s1_replicates
