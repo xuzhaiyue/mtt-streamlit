@@ -548,7 +548,7 @@ with tab2:
             step=5.0,
             format="%.0f",
         )
-        st.caption("按 protocol：每个浓度每块板 3 个细胞系 × 2 孔 = 6 wells；理论 540 μL，默认每浓度配 800 μL/plate。")
+        st.caption("按 protocol：每个浓度每块板 3 个细胞系 × 2 孔 = 6 wells；理论 540 μL，默认每浓度配 650 μL/plate。")
 
         st.markdown("**浓度梯度设置 - 自动按高到低稀释**")
         s1_unit = st.selectbox(
@@ -564,14 +564,14 @@ with tab2:
 
         wells_per_conc_per_plate = s1_cell_lines_per_plate * s1_replicates
         base_needed = s1_add_vol * wells_per_conc_per_plate * s1_plate_num
-        protocol_min = 800.0 * s1_plate_num
+        protocol_min = 650.0 * s1_plate_num
         suggest_min = max(base_needed * (1 + s1_extra_ratio / 100), protocol_min)
         s1_plan_vol = st.number_input(
             "每管希望最终至少保留体积 (μL)",
             min_value=0.0,
             value=float(int(suggest_min) if suggest_min > 0 else 0),
             step=50.0,
-            help="按本 protocol 默认 800 μL/plate；如果多个板共用同一培养基，可按板数自动放大。",
+            help="按本 protocol 默认 650 μL/plate；12 块板即 7.8 mL/浓度。",
         )
         s1_max_dilution = st.number_input(
             "单步最大稀释倍数 (默认 10×，越大跳跃越多)",
